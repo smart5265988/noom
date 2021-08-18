@@ -1,6 +1,7 @@
 import http from 'http';
+import { Server } from 'socket.io';
 import express from 'express';
-import WebSocket from 'ws';
+import { instrument } from '@socket.io/admin-ui';
 
 const app = express();
 
@@ -10,33 +11,24 @@ app.use('/public', express.static(__dirname + '/public'));
 app.get('/', (req, res) => res.render('home'));
 app.get('/*', (req, res) => res.redirect('/'));
 
-const handleListen = () => console.log(`Listening on http://localhost:3000`);
+const httpServer = http.createServer(app);
+const wsServer = new Server(httpServer);
 
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server }); // http wss 둘다 가능하게함 (같은 서버에서)
-
-const sockets = [];
-
-wss.on('connection', (socket) => {
-  sockets.push(socket);
-  socket['nickname'] = 'Anon';
-  console.log('Connected to Browser ✅');
-
-  socket.on('close', () => {
-    console.log('Disconnected from Browser ❌');
+wsServer.on('connection', (socket) => {
+  socket.on('join_room', (roomName) => {
+    socket.join(roomName);
+    socket.to(roomName).emit('welcome');
   });
-
-  socket.on('message', (msg) => {
-    const message = JSON.parse(msg);
-    switch (message.type) {
-      case 'new_message':
-        sockets.forEach((aSocket) => {
-          aSocket.send(`${socket.nickname}: ${message.payload}`);
-        });
-      case 'nickname':
-        socket['nickname'] = message.payload;
-    }
+  socket.on('offer', (offer, roomName) => {
+    socket.to(roomName).emit('offer', offer);
+  });
+  socket.on('answer', (answer, roomName) => {
+    socket.to(roomName).emit('answer', answer);
+  });
+  socket.on('ice', (ice, roomName) => {
+    socket.to(roomName).emit('ice', ice);
   });
 });
 
-server.listen(3000, handleListen);
+const handleListen = () => console.log(`Listening on http://localhost:3000`);
+httpServer.listen(3000, handleListen);
